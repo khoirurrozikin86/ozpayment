@@ -2,11 +2,11 @@ name: Deploy stylus-cms
 
 on:
   push:
-    branches: [ main, master ]    # jalan kalau push ke main ATAU master
+    branches: [ add_payment ]    # jalan kalau push ke main ATAU master
   workflow_dispatch: {}           # bisa run manual
 
 concurrency:
-  group: deploy-stylus-cms
+  group: deploy-ozpayment
   cancel-in-progress: true
 
 env:
