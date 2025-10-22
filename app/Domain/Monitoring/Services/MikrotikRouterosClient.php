@@ -12,13 +12,13 @@ class MikrotikRouterosClient implements MikrotikClientInterface
     public function withConnection(array $conf, \Closure $callback, $default = null)
     {
         try {
-            $this->api->port    = $conf['port'] ?? 8728;
-            $this->api->ssl     = $conf['ssl']  ?? false;
-            $this->api->timeout = 5;
+            $this->api->port     = $conf['port'] ?? 8728;
+            $this->api->ssl      = $conf['ssl']  ?? false;
+            $this->api->timeout  = 5;
             $this->api->attempts = 2;
-            $this->api->delay   = 1;
+            $this->api->delay    = 1;
 
-            if (! $this->api->connect($conf['host'], $conf['user'], $conf['pass'])) {
+            if (!$this->api->connect($conf['host'], $conf['user'], $conf['pass'])) {
                 return $default;
             }
             return $callback($this->api);
@@ -30,30 +30,56 @@ class MikrotikRouterosClient implements MikrotikClientInterface
         }
     }
 
-    public function pingOne($mikrotik, string $target, int $count = 2, int $timeoutMs = 1000): array
+    public function pingOne($mikrotik, string $target, ?string $srcAddress = null, int $count = 2, int $timeoutMs = 1000): array
     {
-        // gunakan /tool/ping + format waktu yg benar
-        $rows = $mikrotik->comm('/tool/ping', [
+        $args = [
             'address'  => $target,
             'count'    => max(1, $count),
             'interval' => '1s',
             'timeout'  => $timeoutMs . 'ms',
-            // 'src-address' => '192.168.xx.yy', // aktifkan bila perlu
-        ]);
+        ];
+        if ($srcAddress) {
+            $args['src-address'] = $srcAddress;
+        }
 
+        // try /tool/ping first
+        $rows   = $mikrotik->comm('/tool/ping', $args);
+        $parsed = $this->parsePingRows($rows);
+
+        // fallback to /ping if needed
+        if ($parsed['ok'] === false && $parsed['latency'] === null) {
+            $rows   = $mikrotik->comm('/ping', [
+                'address'  => $target,
+                'count'    => max(1, $count),
+                'interval' => '00:00:01',
+                'timeout'  => $timeoutMs,
+            ]);
+            $parsed = $this->parsePingRows($rows);
+        }
+
+        return $parsed; // ['ok'=>bool, 'latency'=>float|null]
+    }
+
+    /** @param mixed $rows */
+    private function parsePingRows($rows): array
+    {
         $ok = false;
         $lat = null;
         $receivedSum = null;
 
         foreach ((array)$rows as $r) {
-            // baris reply punya 'time', summary terakhir punya 'received'/'sent'
             if (isset($r['time'])) {
                 $ok = true;
-                $t = (float)str_replace(['ms', ' '], '', (string)$r['time']);
-                $lat = is_null($lat) ? $t : min($lat, $t); // ambil latency terbaik
+                $t  = (float) str_replace(['ms', ' '], '', (string)$r['time']);
+                $lat = is_null($lat) ? $t : min($lat, $t);
+            }
+            if (isset($r['avg-rtt'])) { // some ROS versions
+                $ok = true;
+                $t  = (float) str_replace(['ms', ' '], '', (string)$r['avg-rtt']);
+                $lat = is_null($lat) ? $t : min($lat, $t);
             }
             if (isset($r['received'])) {
-                $receivedSum = (int)$r['received'];
+                $receivedSum = (int) $r['received'];
             }
         }
 
