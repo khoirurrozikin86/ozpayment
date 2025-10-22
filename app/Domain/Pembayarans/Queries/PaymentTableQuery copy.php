@@ -4,20 +4,15 @@ namespace App\Domain\Pembayarans\Queries;
 
 use App\Models\Pembayaran;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
 
-class PaymentTableQuery
+class PaymentTableQueryc
 {
     public function builder(): Builder
     {
-        /** @var \App\Models\User|null $user */
-        $user = Auth::user();
-
-        $q = Pembayaran::query()
-            ->leftJoin('tagihans',   'tagihans.id',           '=', 'pembayarans.tagihan_id')
+        return Pembayaran::query()
+            ->leftJoin('tagihans', 'tagihans.id', '=', 'pembayarans.tagihan_id')
             ->leftJoin('pelanggans', 'pelanggans.id_pelanggan', '=', 'tagihans.id_pelanggan')
-            ->leftJoin('users',      'users.id',              '=', 'pembayarans.user_id')
-            ->leftJoin('servers',    'servers.id',            '=', 'pelanggans.id_server') // optional: untuk tampilkan lokasi
+            ->leftJoin('users', 'users.id', '=', 'pembayarans.user_id')
             ->select([
                 'pembayarans.id',
                 'pembayarans.tagihan_id',
@@ -29,27 +24,11 @@ class PaymentTableQuery
                 'pembayarans.user_id',
                 'pembayarans.created_at',
                 'pembayarans.updated_at',
-
                 'tagihans.no_tagihan',
                 'tagihans.id_pelanggan',
                 'pelanggans.nama as nama_pelanggan',
-
                 'users.name as user_name',
-                'pelanggans.id_server',          // optional: kalau butuh di tabel
-                'servers.lokasi as lokasi_server' // optional: kalau mau tampilkan lokasi
             ]);
-
-        // Filter lokasi untuk user biasa
-        if ($user && ! $user->can('tagihans.view-all') && ! $user->hasRole('super_admin')) {
-            if ($user->server_id) {
-                $q->where('pelanggans.id_server', $user->server_id);
-            } else {
-                // user belum diset lokasi → kosongkan hasil agar aman
-                $q->whereRaw('1=0');
-            }
-        }
-
-        return $q;
     }
 
     /** Terapkan filter dari request */

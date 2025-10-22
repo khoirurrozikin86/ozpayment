@@ -92,9 +92,16 @@ class PaymentController extends Controller
 
     public function store(PaymentStoreRequest $req, PaymentService $svc)
     {
-        $svc->create($req->sanitized());
-        return response()->json(['message' => 'Payment recorded']);
+        try {
+            $svc->create($req->sanitized());
+            return response()->json(['message' => 'Payment recorded']);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
     }
+
 
     public function destroy(Pembayaran $payment, PaymentService $svc)
     {

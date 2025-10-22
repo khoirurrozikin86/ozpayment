@@ -36,4 +36,9 @@ class User extends Authenticatable
     {
         return $this->hasRole('super_admin');
     }
+
+    public function server()
+    {
+        return $this->belongsTo(Server::class);
+    }
 }

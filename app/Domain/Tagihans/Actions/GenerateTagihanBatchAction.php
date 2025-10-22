@@ -24,6 +24,7 @@ class GenerateTagihanBatchAction
         $pelQuery = Pelanggan::query()
             ->leftJoin('pakets', 'pakets.id', '=', 'pelanggans.id_paket')
             ->when($pelangganIds, fn($q) => $q->whereIn('pelanggans.id_pelanggan', $pelangganIds))
+            ->where('pelanggans.remark1', 1) // ✅ hanya pelanggan aktif
             ->select([
                 'pelanggans.id_pelanggan',
                 'pelanggans.id_paket as paket_id',          // alias aman

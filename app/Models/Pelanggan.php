@@ -32,6 +32,6 @@ class Pelanggan extends Model
     }
     public function server()
     {
-        return $this->belongsTo(\App\Models\Server::class, 'id_server');
+        return $this->belongsTo(\App\Models\Server::class, 'id_server', 'id');
     }
 }

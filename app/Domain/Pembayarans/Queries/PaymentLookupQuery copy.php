@@ -6,18 +6,15 @@ use Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\Builder;
 use App\Models\Pelanggan;
 use App\Models\Tagihan;
-use Illuminate\Support\Facades\Auth;
 
 class PaymentLookupQuery
 {
-    /** 🔍 Pelanggan + info server (max 10, sesuai lokasi user) */
+    /** Pelanggan + info server (max 10) */
     public function pelangganBuilder(string $q): Builder
     {
-        /** @var \App\Models\User|null $user */
-        $user = Auth::user();
         $like = '%' . $q . '%';
 
-        $query = Pelanggan::query()
+        return Pelanggan::query()
             ->leftJoin('servers', 'servers.id', '=', 'pelanggans.id_server')
             ->select([
                 'pelanggans.id_pelanggan',
@@ -33,31 +30,19 @@ class PaymentLookupQuery
             ->where(function ($w) use ($like) {
                 $w->where('pelanggans.id_pelanggan', 'like', $like)
                     ->orWhere('pelanggans.nama', 'like', $like);
-            });
-
-        // 🔒 Batasi berdasarkan lokasi user (server_id)
-        if ($user && ! $user->can('tagihans.view-all') && ! $user->hasRole('super_admin')) {
-            if ($user->server_id) {
-                $query->where('pelanggans.id_server', $user->server_id);
-            } else {
-                $query->whereRaw('1=0'); // kalau user belum di-set lokasi
-            }
-        }
-
-        return $query->orderBy('pelanggans.nama')->limit(10);
+            })
+            ->orderBy('pelanggans.nama')
+            ->limit(10);
     }
 
-    /** 📋 Tagihan grouped by id_pelanggan (prioritas ‘belum’) */
+    /** Tagihan grouped by id_pelanggan (prioritas ‘belum’) */
     public function tagihansByPelanggan(array $pelangganIds): Collection
     {
         if (empty($pelangganIds)) return collect();
 
-        /** @var \App\Models\User|null $user */
-        $user = Auth::user();
-
-        $query = Tagihan::query()
-            ->leftJoin('pelanggans', 'pelanggans.id_pelanggan', '=', 'tagihans.id_pelanggan')
+        return Tagihan::query()
             ->leftJoin('bulans', 'bulans.id_bulan', '=', 'tagihans.id_bulan')
+            ->whereIn('tagihans.id_pelanggan', $pelangganIds)
             ->select([
                 'tagihans.id',
                 'tagihans.no_tagihan',
@@ -70,19 +55,9 @@ class PaymentLookupQuery
                 'bulans.bulan as nama_bulan',
                 'tagihans.updated_at',
             ])
-            ->whereIn('tagihans.id_pelanggan', $pelangganIds)
             ->orderByRaw("CASE WHEN tagihans.status='belum' THEN 0 ELSE 1 END")
-            ->orderByDesc('tagihans.updated_at');
-
-        // 🔒 Filter lokasi (user biasa hanya lihat tagihan server miliknya)
-        if ($user && ! $user->can('tagihans.view-all') && ! $user->hasRole('super_admin')) {
-            if ($user->server_id) {
-                $query->where('pelanggans.id_server', $user->server_id);
-            } else {
-                $query->whereRaw('1=0');
-            }
-        }
-
-        return $query->get()->groupBy('id_pelanggan');
+            ->orderByDesc('tagihans.updated_at')
+            ->get()
+            ->groupBy('id_pelanggan');
     }
 }

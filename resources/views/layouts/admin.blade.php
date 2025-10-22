@@ -83,6 +83,58 @@
     <script src="{{ asset('vendor/nobleui/assets/js/template.js') }}"></script>
     {{-- Custom per halaman --}}
     @stack('scripts')
+
+
+
+    <script>
+        (function exactActiveSidebar() {
+            function normalizePath(u) {
+                try {
+                    const url = new URL(u, location.origin);
+                    return (url.pathname || '/').replace(/\/+$/, '') || '/';
+                } catch {
+                    return '/';
+                }
+            }
+
+            function run() {
+                const current = normalizePath(location.href);
+
+                // Hanya di sidebar
+                const $sidebar = $('.sidebar, .sidebar-body, nav.sidebar'); // sesuaikan wrapper sidebarmu
+                if (!$sidebar.length) return;
+
+                // Bersihkan state auto-active bawaan tema
+                $sidebar.find('.nav-link.active').removeClass('active');
+                $sidebar.find('.nav-item.active').removeClass('active');
+                $sidebar.find('.collapse.show').removeClass('show');
+
+                // Set active berdasar exact path
+                $sidebar.find('.nav-link[href]').each(function() {
+                    const $a = $(this);
+                    const hrefPath = normalizePath($a.attr('href'));
+                    if (hrefPath === current) {
+                        $a.addClass('active');
+                        $a.closest('.collapse').addClass('show');
+                        $a.parents('.nav-item').last().addClass('active');
+                    }
+                });
+
+                // Opsional: kalau mau grup terbuka saat di area /super/xxx/*
+                // tinggal tambahkan aturan startsWith di sini per grup bila perlu.
+            }
+
+            // Jalankan setelah vendor inisialisasi
+            if (document.readyState === 'complete') setTimeout(run, 0);
+            else window.addEventListener('load', () => setTimeout(run, 0));
+
+            // Ulangi bila SPA/Livewire/Turbo
+            document.addEventListener('turbo:load', run);
+            document.addEventListener('pjax:end', run);
+            document.addEventListener('livewire:navigated', run);
+        })();
+    </script>
+
 </body>
 
 </html>

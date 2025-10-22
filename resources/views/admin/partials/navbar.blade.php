@@ -6,7 +6,7 @@
 
     <div class="navbar-content">
         {{-- Search --}}
-        <form class="search-form" action="" method="GET">
+        {{-- <form class="search-form" action="" method="GET">
             <div class="input-group">
                 <div class="input-group-text">
                     <i data-feather="search"></i>
@@ -14,11 +14,11 @@
                 <input type="text" name="q" class="form-control" id="navbarForm" placeholder="Search here..."
                     value="{{ request('q') }}">
             </div>
-        </form>
+        </form> --}}
 
         <ul class="navbar-nav">
             {{-- Apps dropdown (static contoh) --}}
-            <li class="nav-item dropdown">
+            {{-- <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" id="appsDropdown" role="button"
                     data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     <i data-feather="grid"></i>
@@ -62,7 +62,7 @@
                         <a href="">View all</a>
                     </div>
                 </div>
-            </li>
+            </li> --}}
 
             @auth
                 @php

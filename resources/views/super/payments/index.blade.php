@@ -49,26 +49,53 @@
                         </div>
                     </div>
 
-                    <div class="row g-3 mb-2">
+                    <div class="row g-3 mb-3">
                         <div class="col-sm-4">
-                            <div class="p-3 bg-light rounded-2">
-                                <div class="small text-muted">Total Transaksi</div>
-                                <div id="sum_tx" class="fs-5 fw-semibold">0</div>
+                            <div
+                                class="card-stats bg-gradient-primary text-white shadow-sm p-3 rounded-3 position-relative overflow-hidden">
+                                <div class="d-flex align-items-center">
+                                    <div class="icon-wrapper bg-white bg-opacity-25 rounded-circle p-2 me-3">
+                                        <i data-feather="shopping-bag"></i>
+                                    </div>
+                                    <div>
+                                        <div class="small fw-semibold text-white-50">Total Transaksi</div>
+                                        <div id="sum_tx" class="fs-5 fw-bold mb-0">0</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
                         <div class="col-sm-4">
-                            <div class="p-3 bg-light rounded-2">
-                                <div class="small text-muted">Total Amount</div>
-                                <div id="sum_amount" class="fs-5 fw-semibold">0.00</div>
+                            <div
+                                class="card-stats bg-gradient-success text-white shadow-sm p-3 rounded-3 position-relative overflow-hidden">
+                                <div class="d-flex align-items-center">
+                                    <div class="icon-wrapper bg-white bg-opacity-25 rounded-circle p-2 me-3">
+                                        <i data-feather="dollar-sign"></i>
+                                    </div>
+                                    <div>
+                                        <div class="small fw-semibold text-white-50">Total Amount</div>
+                                        <div id="sum_amount" class="fs-5 fw-bold mb-0">0.00</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
+
                         <div class="col-sm-4">
-                            <div class="p-3 bg-light rounded-2">
-                                <div class="small text-muted">Avg Amount</div>
-                                <div id="avg_amount" class="fs-5 fw-semibold">0.00</div>
+                            <div
+                                class="card-stats bg-gradient-warning text-white shadow-sm p-3 rounded-3 position-relative overflow-hidden">
+                                <div class="d-flex align-items-center">
+                                    <div class="icon-wrapper bg-white bg-opacity-25 rounded-circle p-2 me-3">
+                                        <i data-feather="activity"></i>
+                                    </div>
+                                    <div>
+                                        <div class="small fw-semibold text-white-50">Avg Amount</div>
+                                        <div id="avg_amount" class="fs-5 fw-bold mb-0">0.00</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
+
 
                     <div class="table-responsive">
                         <table id="payments-table" class="table w-100">
@@ -95,7 +122,7 @@
     </div>
 @endsection
 
-@push('vendor-styles')
+{{-- @push('vendor-styles')
     <link rel="stylesheet" href="{{ asset('vendor/nobleui/assets/vendors/datatables.net-bs5/dataTables.bootstrap5.css') }}">
     <style>
         .dataTables_wrapper .dropdown {
@@ -110,7 +137,7 @@
 @push('vendor-scripts')
     <script src="{{ asset('vendor/nobleui/assets/vendors/datatables.net/jquery.dataTables.js') }}"></script>
     <script src="{{ asset('vendor/nobleui/assets/vendors/datatables.net-bs5/dataTables.bootstrap5.js') }}"></script>
-@endpush
+@endpush --}}
 
 @push('scripts')
     <script>
@@ -135,15 +162,24 @@
                 };
             }
 
+            function formatRupiah(value) {
+                if (value === null || value === undefined || isNaN(value)) return 'Rp 0';
+                return 'Rp ' + parseFloat(value)
+                    .toFixed(2) // dua desimal
+                    .replace('.', ',') // ganti titik jadi koma untuk desimal
+                    .replace(/\B(?=(\d{3})+(?!\d))/g, '.'); // tambahkan titik setiap 3 digit
+            }
+
             function loadSummary() {
                 const f = gatherFilters();
                 $.get(@json(route('super.payments.summary')), f)
                     .done(res => {
                         $('#sum_tx').text(res.tx_count ?? 0);
-                        $('#sum_amount').text(parseFloat(res.total_amount ?? 0).toFixed(2));
-                        $('#avg_amount').text(parseFloat(res.avg_amount ?? 0).toFixed(2));
+                        $('#sum_amount').text(formatRupiah(res.total_amount ?? 0));
+                        $('#avg_amount').text(formatRupiah(res.avg_amount ?? 0));
                     });
             }
+
 
             const dt = $(DT_SEL).DataTable({
                 processing: true,

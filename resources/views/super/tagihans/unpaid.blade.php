@@ -142,7 +142,31 @@
                     },
                     {
                         data: 'status',
-                        name: 'tagihans.status'
+                        name: 'tagihans.status',
+                        className: 'text-center',
+                        render: function(data, type, row) {
+                            if (type !== 'display') return data;
+
+                            const val = (data || '').toString().trim().toLowerCase();
+                            const isLunas = val === 'lunas' || val === 'paid';
+
+                            const colorClass = isLunas ?
+                                'bg-gradient-success text-white shadow-sm' :
+                                'bg-gradient-danger text-white shadow-sm';
+
+                            const icon = isLunas ?
+                                '<i data-feather="check-circle" class="me-1" style="width:12px;height:12px;"></i>' :
+                                '<i data-feather="x-circle" class="me-1" style="width:12px;height:12px;"></i>';
+
+                            const label = isLunas ? 'Lunas' : 'Belum';
+
+                            return `
+      <span class="badge ${colorClass} fw-semibold d-inline-flex align-items-center"
+            style="font-size:0.68rem;padding:3px 8px;border-radius:8px;">
+        ${icon}${label}
+      </span>
+    `;
+                        }
                     },
                     {
                         data: 'tgl_bayar',

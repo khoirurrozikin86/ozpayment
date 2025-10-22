@@ -11,15 +11,23 @@ class DeletePaymentAction
     {
         DB::transaction(function () use ($payment) {
             $tagihan = $payment->tagihan()->lockForUpdate()->first();
+
             $payment->delete();
 
-            // Re-evaluate status tagihan setelah penghapusan
             if ($tagihan) {
-                $sum = (float)$tagihan->pembayarans()->sum('amount');
-                if ($sum + 0.00001 >= (float)$tagihan->jumlah_tagihan) {
-                    $tagihan->update(['status' => 'lunas', 'tgl_bayar' => $tagihan->tgl_bayar ?? now()->toDateString()]);
+                $totalBayar = (float) $tagihan->pembayarans()->sum('amount');
+
+                if ($totalBayar + 0.00001 >= (float) $tagihan->jumlah_tagihan) {
+                    // tetap lunas (jarang terjadi setelah delete, kecuali ada pembayaran lain cukup besar)
+                    if ($tagihan->status !== 'lunas') {
+                        $tagihan->update(['status' => 'lunas', 'tgl_bayar' => $tagihan->tgl_bayar ?: now()]);
+                    }
                 } else {
-                    $tagihan->update(['status' => 'belum']); // belum lunas lagi
+                    // jadi belum lunas → kembalikan status & kosongkan tgl_bayar
+                    $tagihan->update([
+                        'status'    => 'belum',
+                        'tgl_bayar' => null,
+                    ]);
                 }
             }
         });

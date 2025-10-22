@@ -11,6 +11,7 @@ use App\Domain\Tagihans\Actions\{
 };
 use App\Domain\Tagihans\Support\InvoiceNumber;
 use App\Models\Tagihan;
+use Illuminate\Auth\Access\AuthorizationException;
 
 class TagihanService
 {
@@ -19,6 +20,7 @@ class TagihanService
         protected UpdateTagihanAction $update,
         protected DeleteTagihanAction $delete,
         protected GenerateTagihanBatchAction $generateBatch,
+
     ) {}
 
     public function create(array $payload): Tagihan

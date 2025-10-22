@@ -10,6 +10,23 @@
     </nav>
 @endsection
 
+@push('styles')
+    <style>
+        .bg-gradient-success {
+            background: linear-gradient(135deg, #28a745, #4cd964);
+        }
+
+        .bg-gradient-danger {
+            background: linear-gradient(135deg, #dc3545, #ff7675);
+        }
+
+        .badge.shadow-sm {
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+        }
+    </style>
+@endpush
+
+
 
 @section('content')
     <div class="row">
@@ -156,8 +173,34 @@
                     },
                     {
                         data: 'status',
-                        name: 'tagihans.status'
+                        name: 'tagihans.status',
+                        className: 'text-center',
+                        render: function(data, type, row) {
+                            if (type !== 'display') return data;
+
+                            const val = (data || '').toString().trim().toLowerCase();
+                            const isLunas = val === 'lunas' || val === 'paid';
+
+                            const colorClass = isLunas ?
+                                'bg-gradient-success text-white shadow-sm' :
+                                'bg-gradient-danger text-white shadow-sm';
+
+                            const icon = isLunas ?
+                                '<i data-feather="check-circle" class="me-1" style="width:12px;height:12px;"></i>' :
+                                '<i data-feather="x-circle" class="me-1" style="width:12px;height:12px;"></i>';
+
+                            const label = isLunas ? 'Lunas' : 'Belum';
+
+                            return `
+      <span class="badge ${colorClass} fw-semibold d-inline-flex align-items-center"
+            style="font-size:0.68rem;padding:3px 8px;border-radius:8px;">
+        ${icon}${label}
+      </span>
+    `;
+                        }
                     },
+
+
                     {
                         data: 'tgl_bayar',
                         name: 'tagihans.tgl_bayar'
