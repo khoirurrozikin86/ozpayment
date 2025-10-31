@@ -1,4 +1,4 @@
-name: Deploy stylus-cms
+name: Deploy ozpayment
 
 on:
   push:
