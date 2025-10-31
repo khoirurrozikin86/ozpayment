@@ -1,71 +1,98 @@
+name: Deploy ozapi
+
+on:
+  push:
+    branches: [ add_payment, main ]    # jalan kalau push ke main ATAU master
+  workflow_dispatch: {}           # bisa run manual
+
+concurrency:
+  group: deploy-ozapi
+  cancel-in-progress: true
+
+env:
+  TARGET_DIR: /var/www/html/ozapi
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Write SSH key to file (secure)
-        run: |
-          umask 177
-          cat > id_ci <<'EOF'
-${{ secrets.SSH_PRIVATE_KEY }}
-EOF
-          # sanity check format header/footer
-          head -n 1 id_ci | grep -q 'BEGIN OPENSSH PRIVATE KEY' || { echo "Key header invalid"; exit 1; }
-          tail -n 1 id_ci | grep -q 'END OPENSSH PRIVATE KEY' || { echo "Key footer invalid"; exit 1; }
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.0
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Tulis PRIVATE key dari Secrets ke file, hindari parsing error
+      - name: Write private key file
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
+          chmod 600 ~/.ssh/ci_key
+
+      - name: Add known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          if [ -n "${{ secrets.KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          fi
+
+      # Test koneksi: kalau gagal -> job FAIL (tidak lanjut)
+      - name: Test SSH to server
+        run: |
+          ssh -i ~/.ssh/ci_key \
+              -o IdentitiesOnly=yes \
+              -o StrictHostKeyChecking=yes \
+              -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}} \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'whoami && hostname'
+
+      # Kirim source pakai rsync (exclude file/folder sensitif)
+      - name: Rsync source to server
+        run: |
+          RSYNC_EXCLUDES="--exclude .git --exclude node_modules --exclude vendor --exclude .env --exclude storage/*"
+          rsync -az --delete $RSYNC_EXCLUDES \
+            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}}" \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.TARGET_DIR }}/
+
+      # Build & migrate di server (stop kalau ada error sekecil apapun)
+      - name: Remote build & migrate
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}         # 103.175.216.94
-          username: ${{ secrets.SSH_USER }}     # rozikin
-          port: ${{ secrets.SSH_PORT }}         # 22
-          key_path: id_ci                       # <— pakai file, bukan "key:"
-          # passphrase: ${{ secrets.SSH_PASSPHRASE }}  # kalau key ada passphrase
+          host:     ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          port:     ${{ secrets.SSH_PORT || 22 }}
           script_stop: true
           debug: true
           script: |
             set -euo pipefail
-            APP_DIR="/var/www/html/ozapi"
-            REPO_URL="git@github.com:khoirurrozikin86/ozpayment.git"
-            BRANCH="add_payment"
-            export COMPOSER_MEMORY_LIMIT=-1
-            export COMPOSER_ALLOW_SUPERUSER=1
+            cd "${{ env.TARGET_DIR }}"
 
-            mkdir -p ~/.ssh && ssh-keyscan -H github.com >> ~/.ssh/known_hosts || true
+            # Siapkan lingkungan
+            [ -f .env ] || cp .env.example .env || true
+            mkdir -p storage bootstrap/cache
+            find storage -type d -exec chmod 775 {} \; || true
+            find bootstrap/cache -type d -exec chmod 775 {} \; || true
+            chown -R www-data:www-data storage bootstrap/cache || true
 
-            mkdir -p "$APP_DIR"
-            [ -w "$APP_DIR" ] || { echo "no write permission to $APP_DIR"; exit 1; }
-            cd "$APP_DIR"
+            # Cek versi alat
+            php -v
+            composer --version
 
-            command -v git >/dev/null 2>&1 || { echo "git missing"; exit 1; }
-            if [ ! -d ".git" ]; then
-              git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
-            else
-              git config --global --add safe.directory "$APP_DIR"
-              git fetch origin "$BRANCH" --prune
-              git reset --hard "origin/$BRANCH"
-            fi
+            # Install deps & optimasi
+            composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader -q
 
-            if ! command -v composer >/dev/null 2>&1; then
-              curl -sS https://getcomposer.org/installer | php
-              mkdir -p "$HOME/.local/bin"
-              mv composer.phar "$HOME/.local/bin/composer"
-              chmod +x "$HOME/.local/bin/composer"
-              export PATH="$HOME/.local/bin:$PATH"
-            fi
+            # Migrasi DB (aman di production)
+            php artisan migrate --force
 
-            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+            # Cache & optimize (JANGAN di-clear sesudah build)
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            php artisan optimize
 
-            [ -f .env ] || { cp .env.example .env || true; echo "⚠️ .env created from example"; }
-            php artisan key:generate || true
-            php artisan migrate --force || true
-
-            php artisan config:clear || true
-            php artisan route:clear || true
-            php artisan view:clear || true
-            php artisan config:cache || true
-            php artisan route:cache || true
-            php artisan view:cache || true
-            php artisan optimize || true
+            # Link storage (idempotent)
             php artisan storage:link || true
 
-            echo "✅ Deploy selesai $(date)"
+            # (opsional) reload service
+            # sudo systemctl reload apache2 || true
+            npm run build
