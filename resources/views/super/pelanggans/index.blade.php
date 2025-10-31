@@ -103,7 +103,7 @@
                             <select class="form-select" id="id_server" name="id_server">
                                 <option value="">— pilih —</option>
                                 @foreach ($servers as $s)
-                                    <option value="{{ $s->id }}">{{ $s->ip }}</option>
+                                    <option value="{{ $s->id }}">{{ $s->ip }} {{ $s->lokasi }}</option>
                                 @endforeach
                             </select>
                         </div>
@@ -255,8 +255,8 @@
                         name: 'pakets.nama'
                     },
                     {
-                        data: 'server_ip',
-                        name: 'servers.ip'
+                        data: 'server_lokasi',
+                        name: 'servers.lokasi'
                     },
                     {
                         data: 'updated_at',

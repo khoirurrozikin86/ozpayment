@@ -30,6 +30,7 @@
                                 <tr>
                                     <th>No Tagihan</th>
                                     <th>Pelanggan</th>
+                                    <th>Server</th>
                                     <th>Bulan</th>
                                     <th>Tahun</th>
                                     <th>Jumlah</th>
@@ -127,6 +128,10 @@
                     {
                         data: 'nama_pelanggan',
                         name: 'pelanggans.nama'
+                    },
+                    {
+                        data: 'lokasi_server',
+                        name: 'servers.lokasi'
                     },
                     {
                         data: 'nama_bulan',
