@@ -10,24 +10,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ——— Preflight: pastikan secrets terisi dan SSH bisa connect ———
+      - name: Preflight SSH (sanity check)
+        run: |
+          test -n "${{ secrets.SSH_HOST }}" || (echo "SSH_HOST kosong"; exit 1)
+          test -n "${{ secrets.SSH_USER }}" || (echo "SSH_USER kosong"; exit 1)
+          test -n "${{ secrets.SSH_PORT }}" || (echo "SSH_PORT kosong"; exit 1)
+          test -n "${{ secrets.SSH_PRIVATE_KEY }}" || (echo "SSH_PRIVATE_KEY kosong"; exit 1)
+          echo "OK: Secrets terdeteksi."
+
+      - name: Test SSH connectivity (verbose)
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script_stop: true
+          debug: true
+          script: |
+            set -x
+            whoami && hostname
+            command -v git || echo "git TIDAK ada"
+            command -v php || echo "php TIDAK ada"
+            command -v composer || echo "composer tidak ada (akan diinstall lokal nanti)"
+
+      # ——— Deploy ———
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.0
         with:
-          host: ${{ secrets.SSH_HOST }}      # contoh: 36.95.208.100
-          username: ${{ secrets.SSH_USER }}  # contoh: deploy
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}      # contoh: 223
+          port: ${{ secrets.SSH_PORT }}
           script_stop: true
           debug: true
           script: |
             set -euo pipefail
 
-            # ====== KONFIGURASI DASAR ======
             APP_DIR="/var/www/html/ozapi"
             REPO_URL="git@github.com:khoirurrozikin86/ozpayment.git"
             BRANCH="add_payment"
             export COMPOSER_MEMORY_LIMIT=-1
             export COMPOSER_ALLOW_SUPERUSER=1
+
+            echo "=== [0/8] Siapkan SSH untuk github.com (known_hosts) ==="
+            mkdir -p ~/.ssh
+            touch ~/.ssh/known_hosts
+            grep -q "^github.com " ~/.ssh/known_hosts || ssh-keyscan -H github.com >> ~/.ssh/known_hosts || true
 
             echo "=== [1/8] Siapkan folder kerja ==="
             mkdir -p "$APP_DIR"
@@ -35,9 +65,17 @@ jobs:
 
             cd "$APP_DIR"
 
-            echo "=== [2/8] Setup repo ==="
+            echo "=== [2/8] Setup repo (clone/update) ==="
+            # Pastikan git tersedia
+            command -v git >/dev/null 2>&1 || { echo "git tidak ditemukan di server"; exit 1; }
+
+            # Penting: server HARUS punya deploy key yang di-authorize di GitHub repo ini
+            # Contoh: ~/.ssh/id_ed25519 dipasangkan sebagai 'Deploy key' (Read-only) di repo ozpayment
+            # Optional: arahkan git pakai key tertentu
+            # export GIT_SSH_COMMAND='ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes'
+
             if [ ! -d ".git" ]; then
-              echo "Belum ada repo, cloning..."
+              echo "Repo belum ada, cloning..."
               git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
             else
               echo "Repo sudah ada, update..."
@@ -48,7 +86,7 @@ jobs:
 
             echo "=== [3/8] Pastikan Composer tersedia ==="
             if ! command -v composer >/dev/null 2>&1; then
-              echo "Composer belum ada, install lokal..."
+              echo "Composer belum ada, install lokal (user)..."
               curl -sS https://getcomposer.org/installer | php
               mkdir -p "$HOME/.local/bin"
               mv composer.phar "$HOME/.local/bin/composer"
@@ -64,24 +102,23 @@ jobs:
             echo "=== [5/8] Siapkan environment ==="
             if [ ! -f .env ]; then
               cp .env.example .env || true
-              echo "⚠️  File .env dibuat dari example. Pastikan variabel DB sudah benar."
+              echo "⚠️  .env dibuat dari example. Pastikan variabel DB sudah benar."
             fi
             php artisan key:generate || true
 
             echo "=== [6/8] Jalankan migrasi ==="
             php artisan migrate --force || true
 
-            echo "=== [7/8] Cache dan optimisasi ==="
+            echo "=== [7/8] Cache & optimize ==="
             php artisan config:clear || true
             php artisan route:clear || true
             php artisan view:clear || true
-
             php artisan config:cache || true
             php artisan route:cache || true
             php artisan view:cache || true
             php artisan optimize || true
 
-            echo "=== [8/8] Storage link & selesai ==="
+            echo "=== [8/8] Storage link ==="
             php artisan storage:link || true
 
             echo "✅ Deploy ozpayment selesai pada $(date)"
