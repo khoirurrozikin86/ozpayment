@@ -1,98 +1,87 @@
-name: Deploy ozpayment
+name: CI/CD Deploy ozpayment (no sudo)
 
 on:
   push:
-    branches: [ add_payment ]    # jalan kalau push ke main ATAU master
-  workflow_dispatch: {}           # bisa run manual
-
-concurrency:
-  group: deploy-ozpayment
-  cancel-in-progress: true
-
-env:
-  TARGET_DIR: /var/www/html/ozapi
+    branches: [ add_payment ]
+  workflow_dispatch: {}
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Tulis PRIVATE key dari Secrets ke file, hindari parsing error
-      - name: Write private key file
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
-          chmod 600 ~/.ssh/ci_key
-
-      - name: Add known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          if [ -n "${{ secrets.KNOWN_HOSTS }}" ]; then
-            echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-          fi
-
-      # Test koneksi: kalau gagal -> job FAIL (tidak lanjut)
-      - name: Test SSH to server
-        run: |
-          ssh -i ~/.ssh/ci_key \
-              -o IdentitiesOnly=yes \
-              -o StrictHostKeyChecking=yes \
-              -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}} \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'whoami && hostname'
-
-      # Kirim source pakai rsync (exclude file/folder sensitif)
-      - name: Rsync source to server
-        run: |
-          RSYNC_EXCLUDES="--exclude .git --exclude node_modules --exclude vendor --exclude .env --exclude storage/*"
-          rsync -az --delete $RSYNC_EXCLUDES \
-            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}}" \
-            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.TARGET_DIR }}/
-
-      # Build & migrate di server (stop kalau ada error sekecil apapun)
-      - name: Remote build & migrate
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.0
         with:
-          host:     ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_PRIVATE_KEY }}
-          port:     ${{ secrets.SSH_PORT || 22 }}
+          host: ${{ secrets.DEPLOY_HOST }}      # contoh: 36.95.208.100
+          username: ${{ secrets.DEPLOY_USER }}  # contoh: deploy
+          key: ${{ secrets.DEPLOY_PRIVATE_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}      # contoh: 223
           script_stop: true
           debug: true
           script: |
             set -euo pipefail
-            cd "${{ env.TARGET_DIR }}"
 
-            # Siapkan lingkungan
-            [ -f .env ] || cp .env.example .env || true
-            mkdir -p storage bootstrap/cache
-            find storage -type d -exec chmod 775 {} \; || true
-            find bootstrap/cache -type d -exec chmod 775 {} \; || true
-            chown -R www-data:www-data storage bootstrap/cache || true
+            # ====== KONFIGURASI DASAR ======
+            APP_DIR="/var/www/html/ozapi"
+            REPO_URL="git@github.com:khoirurrozikin86/ozpayment.git"
+            BRANCH="add_payment"
+            export COMPOSER_MEMORY_LIMIT=-1
+            export COMPOSER_ALLOW_SUPERUSER=1
 
-            # Cek versi alat
-            php -v
-            composer --version
+            echo "=== [1/8] Siapkan folder kerja ==="
+            mkdir -p "$APP_DIR"
+            [ -w "$APP_DIR" ] || { echo "❌ Tidak bisa menulis ke $APP_DIR. Cek izin/owner."; exit 1; }
 
-            # Install deps & optimasi
-            composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader -q
+            cd "$APP_DIR"
 
-            # Migrasi DB (aman di production)
-            php artisan migrate --force
+            echo "=== [2/8] Setup repo ==="
+            if [ ! -d ".git" ]; then
+              echo "Belum ada repo, cloning..."
+              git clone --branch "$BRANCH" --single-branch "$REPO_URL" "$APP_DIR"
+            else
+              echo "Repo sudah ada, update..."
+              git config --global --add safe.directory "$APP_DIR"
+              git fetch origin "$BRANCH" --prune
+              git reset --hard "origin/$BRANCH"
+            fi
 
-            # Cache & optimize (JANGAN di-clear sesudah build)
-            php artisan config:cache
-            php artisan route:cache
-            php artisan view:cache
-            php artisan optimize
+            echo "=== [3/8] Pastikan Composer tersedia ==="
+            if ! command -v composer >/dev/null 2>&1; then
+              echo "Composer belum ada, install lokal..."
+              curl -sS https://getcomposer.org/installer | php
+              mkdir -p "$HOME/.local/bin"
+              mv composer.phar "$HOME/.local/bin/composer"
+              chmod +x "$HOME/.local/bin/composer"
+              export PATH="$HOME/.local/bin:$PATH"
+              grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.profile" 2>/dev/null || \
+                echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.profile"
+            fi
 
-            # Link storage (idempotent)
+            echo "=== [4/8] Install dependencies (production) ==="
+            composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
+
+            echo "=== [5/8] Siapkan environment ==="
+            if [ ! -f .env ]; then
+              cp .env.example .env || true
+              echo "⚠️  File .env dibuat dari example. Pastikan variabel DB sudah benar."
+            fi
+            php artisan key:generate || true
+
+            echo "=== [6/8] Jalankan migrasi ==="
+            php artisan migrate --force || true
+
+            echo "=== [7/8] Cache dan optimisasi ==="
+            php artisan config:clear || true
+            php artisan route:clear || true
+            php artisan view:clear || true
+
+            php artisan config:cache || true
+            php artisan route:cache || true
+            php artisan view:cache || true
+            php artisan optimize || true
+
+            echo "=== [8/8] Storage link & selesai ==="
             php artisan storage:link || true
 
-            # (opsional) reload service
-            # sudo systemctl reload apache2 || true
-            npm run build
+            echo "✅ Deploy ozpayment selesai pada $(date)"
