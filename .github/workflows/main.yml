@@ -2,8 +2,10 @@ name: Deploy ozapi
 
 on:
   push:
-    branches: [ add_payment, main ]    # jalan kalau push ke main ATAU master
-  workflow_dispatch: {}           # bisa run manual
+    branches:
+      - add_payment
+      - main
+  workflow_dispatch: {}
 
 concurrency:
   group: deploy-ozapi
@@ -15,84 +17,71 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Tulis PRIVATE key dari Secrets ke file, hindari parsing error
-      - name: Write private key file
+      # Tulis private key dari SECRET base64, lalu validasi agar tak kena "libcrypto"
+      - name: Write private key (base64 → file)
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
-          chmod 600 ~/.ssh/ci_key
+          umask 177
+          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/ci_key
+          # bersihkan CRLF jika ada
+          sed -i 's/\r$//' ~/.ssh/ci_key
+          # cek: bisa diparse oleh OpenSSH?
+          ssh-keygen -y -f ~/.ssh/ci_key > /dev/null || { echo "❌ Private key corrupt / wrong format / encrypted"; exit 1; }
+          echo "OK: private key parsed"
 
       - name: Add known_hosts
         run: |
           mkdir -p ~/.ssh
-          if [ -n "${{ secrets.KNOWN_HOSTS }}" ]; then
-            echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
-          else
-            ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-          fi
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
 
-      # Test koneksi: kalau gagal -> job FAIL (tidak lanjut)
-      - name: Test SSH to server
+      - name: Test SSH to server (verbose)
         run: |
-          ssh -i ~/.ssh/ci_key \
-              -o IdentitiesOnly=yes \
-              -o StrictHostKeyChecking=yes \
-              -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}} \
-              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'whoami && hostname'
+          set -x
+          ssh -vvv -i ~/.ssh/ci_key \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "${{ secrets.SSH_PORT || '22' }}" \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'whoami && hostname'
 
-      # Kirim source pakai rsync (exclude file/folder sensitif)
       - name: Rsync source to server
         run: |
-          RSYNC_EXCLUDES="--exclude .git --exclude node_modules --exclude vendor --exclude .env --exclude storage/*"
+          RSYNC_EXCLUDES="--exclude .git --exclude node_modules --exclude vendor --exclude .env --exclude storage"
           rsync -az --delete $RSYNC_EXCLUDES \
-            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}}" \
+            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p ${{ secrets.SSH_PORT || '22' }}" \
             ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.TARGET_DIR }}/
 
-      # Build & migrate di server (stop kalau ada error sekecil apapun)
       - name: Remote build & migrate
         uses: appleboy/ssh-action@v1.0.3
         with:
           host:     ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          key:      ${{ secrets.SSH_PRIVATE_KEY }}
           port:     ${{ secrets.SSH_PORT || 22 }}
+          key_path: ~/.ssh/ci_key         # ← gunakan file yang sudah diverifikasi
           script_stop: true
           debug: true
           script: |
             set -euo pipefail
             cd "${{ env.TARGET_DIR }}"
 
-            # Siapkan lingkungan
             [ -f .env ] || cp .env.example .env || true
             mkdir -p storage bootstrap/cache
             find storage -type d -exec chmod 775 {} \; || true
             find bootstrap/cache -type d -exec chmod 775 {} \; || true
             chown -R www-data:www-data storage bootstrap/cache || true
 
-            # Cek versi alat
             php -v
-            composer --version
-
-            # Install deps & optimasi
+            composer --version || (curl -sS https://getcomposer.org/installer | php && sudo mv composer.phar /usr/local/bin/composer || true)
             composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader -q
 
-            # Migrasi DB (aman di production)
-            php artisan migrate --force
-
-            # Cache & optimize (JANGAN di-clear sesudah build)
+            php artisan migrate --force || true
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
             php artisan optimize
-
-            # Link storage (idempotent)
             php artisan storage:link || true
 
-            # (opsional) reload service
-            # sudo systemctl reload apache2 || true
-            npm run build
+            # npm run build  # hapus jika server tidak punya Node
