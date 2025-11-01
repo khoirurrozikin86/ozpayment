@@ -22,7 +22,7 @@ class PelangganController extends Controller
     {
         // untuk opsi select paket & server di modal
         $pakets  = Paket::orderBy('nama')->get(['id', 'nama']);
-        $servers = Server::orderBy('ip')->get(['id', 'ip']);
+        $servers = Server::orderBy('ip')->get(['id', 'ip', 'lokasi']);
         return view('super.pelanggans.index', compact('pakets', 'servers'));
     }
 

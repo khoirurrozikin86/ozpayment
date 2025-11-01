@@ -107,6 +107,7 @@
                                     <th>No Tagihan</th>
                                     <th>ID Pelanggan</th>
                                     <th>Nama Pelanggan</th>
+                                    <th>Server</th>
                                     <th>Method</th>
                                     <th>Ref No</th>
                                     <th>User</th>
@@ -214,6 +215,10 @@
                     {
                         data: 'nama_pelanggan',
                         name: 'pelanggans.nama'
+                    },
+                    {
+                        data: 'lokasi_server',
+                        name: 'servers.lokasi'
                     },
                     {
                         data: 'method',

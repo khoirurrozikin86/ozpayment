@@ -5,8 +5,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OzPay — Billing Wi-Fi Mudah & Cepat</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
     <style>
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #09090b, #18181b, #09090b);
+            color: #f4f4f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         @keyframes floaty {
 
             0%,
@@ -22,19 +34,39 @@
         .animate-floaty {
             animation: floaty 4s ease-in-out infinite;
         }
+
+        .gradient-btn {
+            background: linear-gradient(to right, #34d399, #0ea5e9);
+            color: #0a0a0a;
+            font-weight: 500;
+            border: none;
+            border-radius: 1rem;
+            padding: 0.75rem 1.5rem;
+            transition: opacity 0.3s ease;
+            text-decoration: none;
+        }
+
+        .gradient-btn:hover {
+            opacity: 0.9;
+        }
+
+        .gradient-logo {
+            background: linear-gradient(to right, #34d399, #0ea5e9);
+            color: #0a0a0a;
+        }
     </style>
 </head>
 
-<body
-    class="min-h-screen bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 text-zinc-100 flex items-center justify-center">
+<body>
 
-    <div class="text-center px-6">
+    <div class="text-center px-4">
         <!-- logo -->
-        <div class="flex justify-center mb-6">
-            <div
-                class="w-14 h-14 flex items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-sky-500 text-zinc-900 animate-floaty shadow-lg">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor">
+        <div class="d-flex justify-content-center mb-4">
+            <div class="gradient-logo rounded-4 d-flex align-items-center justify-content-center shadow-lg animate-floaty"
+                style="width: 64px; height: 64px;">
+                <!-- Wi-Fi SVG asli -->
+                <svg xmlns="http://www.w3.org/2000/svg" width="34" height="34" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M5 12.55a11 11 0 0 1 14.08 0" />
                     <path d="M1.42 9a16 16 0 0 1 21.16 0" />
                     <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
@@ -44,26 +76,33 @@
         </div>
 
         <!-- heading -->
-        <h1 class="text-4xl md:text-5xl font-bold mb-3">
-            Selamat Datang di <span
-                class="bg-gradient-to-r from-emerald-400 to-sky-500 bg-clip-text text-transparent">OzPay</span>
+        <h1 class="fw-bold mb-3 display-5">
+            Selamat Datang di
+            <span
+                style="background: linear-gradient(to right, #34d399, #0ea5e9); -webkit-background-clip: text; color: transparent;">
+                OzPay
+            </span>
         </h1>
-        <p class="text-zinc-400 max-w-md mx-auto mb-8">
+
+        <p class="text-secondary mx-auto mb-4" style="max-width: 420px;">
             Sistem pembayaran dan tagihan Wi-Fi otomatis. Lebih cepat, lebih mudah, tanpa ribet.
         </p>
 
         <!-- tombol login -->
         <a href="{{ route('login', absolute: false) ?? '/login' }}"
-            class="inline-flex items-center px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-400 to-sky-500 text-zinc-900 font-medium shadow hover:opacity-90 transition">
+            class="gradient-btn d-inline-flex align-items-center">
+
             Login Sekarang
-            <svg xmlns="http://www.w3.org/2000/svg" class="ml-2 w-4 h-4" fill="none" stroke="currentColor"
-                viewBox="0 0 24 24">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="ms-2" viewBox="0 0 24 24">
                 <path d="M5 12h14" />
                 <path d="m12 5 7 7-7 7" />
             </svg>
         </a>
     </div>
 
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 
 </html>
