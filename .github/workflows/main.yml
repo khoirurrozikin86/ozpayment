@@ -2,8 +2,8 @@ name: Deploy ozapi
 
 on:
   push:
-    branches: [ add_payment ]
-  workflow_dispatch: {}
+    branches: [ add_payment, master ]    # jalan kalau push ke main ATAU master
+  workflow_dispatch: {}           # bisa run manual
 
 concurrency:
   group: deploy-ozapi
@@ -11,9 +11,6 @@ concurrency:
 
 env:
   TARGET_DIR: /var/www/html/ozapi
-  SSH_HOST: ${{ secrets.SSH_HOST }}
-  SSH_USER: ${{ secrets.SSH_USER }}
-  SSH_PORT: ${{ secrets.SSH_PORT || 22 }}
 
 jobs:
   deploy:
@@ -23,79 +20,71 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Tulis PRIVATE key dari Secrets ke file, hindari parsing error
       - name: Write private key file
         run: |
-          install -m 700 -d ~/.ssh
-          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
           chmod 600 ~/.ssh/ci_key
 
       - name: Add known_hosts
         run: |
-          install -m 700 -d ~/.ssh
+          mkdir -p ~/.ssh
           if [ -n "${{ secrets.KNOWN_HOSTS }}" ]; then
             echo "${{ secrets.KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
           else
-            ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+            ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
           fi
 
+      # Test koneksi: kalau gagal -> job FAIL (tidak lanjut)
       - name: Test SSH to server
         run: |
           ssh -i ~/.ssh/ci_key \
               -o IdentitiesOnly=yes \
               -o StrictHostKeyChecking=yes \
-              -p "$SSH_PORT" \
-              "$SSH_USER@$SSH_HOST" 'whoami && hostname'
+              -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}} \
+              ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'whoami && hostname'
 
-      # Sinkron kode -> server (exclude yang sensitif). --delete aman krn exclude.
+      # Kirim source pakai rsync (exclude file/folder sensitif)
       - name: Rsync source to server
         run: |
-          RSYNC_EXCLUDES=(
-            "--exclude" ".git"
-            "--exclude" ".github"
-            "--exclude" "node_modules"
-            "--exclude" "vendor"
-            "--exclude" ".env"
-            "--exclude" "storage/*"
-            "--exclude" "bootstrap/cache/*"
-          )
-          rsync -az --delete --info=stats2 --chmod=D775,F664 \
-            "${RSYNC_EXCLUDES[@]}" \
-            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p $SSH_PORT" \
-            ./ "$SSH_USER@$SSH_HOST:$TARGET_DIR/"
+          RSYNC_EXCLUDES="--exclude .git --exclude node_modules --exclude vendor --exclude .env --exclude storage/*"
+          rsync -az --delete $RSYNC_EXCLUDES \
+            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p ${SSH_PORT:-${{ secrets.SSH_PORT || '22' }}}" \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.TARGET_DIR }}/
 
-      # Build & migrate di server
+      # Build & migrate di server (stop kalau ada error sekecil apapun)
       - name: Remote build & migrate
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host:     ${{ env.SSH_HOST }}
-          username: ${{ env.SSH_USER }}
-          key_path: ~/.ssh/ci_key
-          port:     ${{ env.SSH_PORT }}
+          host:     ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key:      ${{ secrets.SSH_PRIVATE_KEY }}
+          port:     ${{ secrets.SSH_PORT || 22 }}
           script_stop: true
           debug: true
           script: |
             set -euo pipefail
-            cd "$TARGET_DIR"
+            cd "${{ env.TARGET_DIR }}"
 
-            # Siapkan env & permission dasar
+            # Siapkan lingkungan
             [ -f .env ] || cp .env.example .env || true
             mkdir -p storage bootstrap/cache
             find storage -type d -exec chmod 775 {} \; || true
-            find storage -type f -exec chmod 664 {} \; || true
             find bootstrap/cache -type d -exec chmod 775 {} \; || true
-            find bootstrap/cache -type f -exec chmod 664 {} \; || true
             chown -R www-data:www-data storage bootstrap/cache || true
 
-            # Composer (pastikan ada)
-            composer --version || (curl -sS https://getcomposer.org/installer | php && sudo mv composer.phar /usr/local/bin/composer)
+            # Cek versi alat
+            php -v
+            composer --version
 
-            # Install deps prod
+            # Install deps & optimasi
             composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader -q
 
-            # Migrasi DB
+            # Migrasi DB (aman di production)
             php artisan migrate --force
 
-            # Cache & optimize
+            # Cache & optimize (JANGAN di-clear sesudah build)
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
@@ -104,19 +93,6 @@ jobs:
             # Link storage (idempotent)
             php artisan storage:link || true
 
-            # (opsional) reload services bila perlu
-            # sudo systemctl reload php8.2-fpm || true
+            # (opsional) reload service
             # sudo systemctl reload apache2 || true
-
-      # (opsional) Build asset Vite di runner dan upload ke server
-      # uncomment kalau ozapi punya front-end vite
-      # - name: Setup Node
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: "20"
-      # - run: npm ci && npm run build
-      # - name: Upload built assets
-      #   run: |
-      #     rsync -az --info=stats2 \
-      #       -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p $SSH_PORT" \
-      #       public/build/ "$SSH_USER@$SSH_HOST:$TARGET_DIR/public/build/"
+            npm run build
