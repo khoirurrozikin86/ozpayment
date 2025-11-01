@@ -1,81 +1,63 @@
-name: Deploy ozapi
+name: Deploy OzAPI (SSH)
 
 on:
   push:
-    branches:
-      - add_payment
-      - main
-  workflow_dispatch: {}
-
-concurrency:
-  group: deploy-ozapi
-  cancel-in-progress: true
-
-env:
-  TARGET_DIR: /var/www/html/ozapi
+    branches: [ "add_payment" ]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # Tulis private key dari SECRET base64, lalu validasi agar tak kena "libcrypto"
-      - name: Write private key (base64 → file)
-        run: |
-          mkdir -p ~/.ssh
-          umask 177
-          echo "${{ secrets.SSH_PRIVATE_KEY_B64 }}" | base64 -d > ~/.ssh/ci_key
-          # bersihkan CRLF jika ada
-          sed -i 's/\r$//' ~/.ssh/ci_key
-          # cek: bisa diparse oleh OpenSSH?
-          ssh-keygen -y -f ~/.ssh/ci_key > /dev/null || { echo "❌ Private key corrupt / wrong format / encrypted"; exit 1; }
-          echo "OK: private key parsed"
+      # Upload kode ke server (hindari folder permission-sensitif)
+      - name: Upload files to SSH server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "."
+          target: "/var/www/html/ozapi"
+          overwrite: true
+          rm: false
+          exclude: |
+            .git
+            .github
+            node_modules
+            vendor
+            storage
+            bootstrap/cache
+            .env
 
-      - name: Add known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-
-      - name: Test SSH to server (verbose)
-        run: |
-          set -x
-          ssh -vvv -i ~/.ssh/ci_key \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=yes \
-            -p "${{ secrets.SSH_PORT || '22' }}" \
-            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" 'whoami && hostname'
-
-      - name: Rsync source to server
-        run: |
-          RSYNC_EXCLUDES="--exclude .git --exclude node_modules --exclude vendor --exclude .env --exclude storage"
-          rsync -az --delete $RSYNC_EXCLUDES \
-            -e "ssh -i ~/.ssh/ci_key -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -p ${{ secrets.SSH_PORT || '22' }}" \
-            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ env.TARGET_DIR }}/
-
-      - name: Remote build & migrate
+      # Jalankan deploy script di server
+      - name: Run remote deploy
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host:     ${{ secrets.SSH_HOST }}
+          host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          port:     ${{ secrets.SSH_PORT || 22 }}
-          key_path: ~/.ssh/ci_key         # ← gunakan file yang sudah diverifikasi
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
           script_stop: true
-          debug: true
           script: |
             set -euo pipefail
-            cd "${{ env.TARGET_DIR }}"
+            cd /var/www/html/ozapi
 
-            [ -f .env ] || cp .env.example .env || true
+            [ -f .env ] || cp .env.example .env
+
             mkdir -p storage bootstrap/cache
+            chown -R www-data:www-data storage bootstrap/cache
             find storage -type d -exec chmod 775 {} \; || true
+            find storage -type f -exec chmod 664 {} \; || true
             find bootstrap/cache -type d -exec chmod 775 {} \; || true
-            chown -R www-data:www-data storage bootstrap/cache || true
+            find bootstrap/cache -type f -exec chmod 664 {} \; || true
 
-            php -v
-            composer --version || (curl -sS https://getcomposer.org/installer | php && sudo mv composer.phar /usr/local/bin/composer || true)
-            composer install --no-interaction --prefer-dist --no-dev --optimize-autoloader -q
+            command -v composer >/dev/null 2>&1 || (curl -sS https://getcomposer.org/installer | php && sudo mv composer.phar /usr/local/bin/composer)
+            composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
             php artisan migrate --force || true
             php artisan config:cache
@@ -83,5 +65,3 @@ jobs:
             php artisan view:cache
             php artisan optimize
             php artisan storage:link || true
-
-            # npm run build  # hapus jika server tidak punya Node
