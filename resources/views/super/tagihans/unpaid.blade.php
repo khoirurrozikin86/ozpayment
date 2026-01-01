@@ -22,12 +22,23 @@
                             <a href="javascript:void(0)" id="btnExport" class="btn btn-outline-secondary btn-sm">Export
                                 Excel</a>
                         </div>
+
+                        <div class="">
+                            <button id="btnPaySelected" class="btn btn-success btn-sm">
+                                Bayar Terpilih
+                            </button>
+                        </div>
+
                     </div>
 
                     <div class="table-responsive">
                         <table id="unpaid-table" class="table w-100">
                             <thead>
                                 <tr>
+                                    <th>
+                                        <input type="checkbox" id="checkAll">
+                                    </th>
+
                                     <th>No Tagihan</th>
                                     <th>Pelanggan</th>
                                     <th>Server</th>
@@ -48,6 +59,61 @@
         </div>
     </div>
 @endsection
+
+
+
+
+
+
+
+
+
+<div class="modal fade" id="payMultiModal">
+    <div class="modal-dialog">
+        <form id="payMultiForm">
+            @csrf
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5>Bayar Beberapa Tagihan</h5>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="id_pelanggan" id="pay_pelanggan">
+
+                    <div id="payTagihanContainer"></div>
+
+                    <div class="mb-2">
+                        <strong>Total Tagihan:</strong>
+                        <span id="totalAmount">0</span>
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Metode</label>
+                        <select class="form-select" name="method" required>
+                            <option value="cash">Cash</option>
+                            <option value="transfer">Transfer</option>
+                            <option value="qris">QRIS</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-2">
+                        <label>Tanggal Bayar</label>
+                        <input type="date" class="form-control" name="paid_at" value="{{ date('Y-m-d') }}">
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="submit" class="btn btn-primary">Bayar Semua</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+
+
+
+
 
 {{-- Modal Pembayaran (reuse dari modul Tagihan) --}}
 @include('super.tagihans.partials.modal-pay')
@@ -70,6 +136,32 @@
     <script src="{{ asset('vendor/nobleui/assets/vendors/datatables.net/jquery.dataTables.js') }}"></script>
     <script src="{{ asset('vendor/nobleui/assets/vendors/datatables.net-bs5/dataTables.bootstrap5.js') }}"></script>
 @endpush
+
+
+<script>
+    window.toastOk = function(msg) {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: msg,
+            showConfirmButton: false,
+            timer: 2000
+        });
+    }
+
+    window.toastErr = function(msg) {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'error',
+            title: msg,
+            showConfirmButton: false,
+            timer: 2500
+        });
+    }
+</script>
+
 
 @push('scripts')
     <script>
@@ -121,7 +213,28 @@
                 processing: true,
                 serverSide: true,
                 ajax: @json(route('super.tagihans.unpaid.dt')),
-                columns: [{
+                columns: [
+
+                    {
+                        data: 'id',
+                        orderable: false,
+                        searchable: false,
+                        render: function(id, type, row) {
+                            if (row.status === 'lunas' || row.jumlah_tagihan <= 0) {
+                                return '';
+                            }
+                            return `
+          <input type="checkbox"
+                 class="row-check"
+                 value="${id}"
+                 data-amount="${row.jumlah_tagihan}" 
+                  data-pelanggan="${row.id_pelanggan}">
+        `;
+                        }
+                    },
+
+
+                    {
                         data: 'no_tagihan',
                         name: 'tagihans.no_tagihan'
                     },
@@ -198,6 +311,8 @@
                 window.location = @json(route('super.tagihans.unpaid.export'));
             });
 
+
+
             // === Modal Bayar ===
             const payModalEl = document.getElementById('payModal');
             const bsPayModal = new bootstrap.Modal(payModalEl);
@@ -222,7 +337,7 @@
                 const fd = new FormData($payForm[0]);
                 $('#btnPaySubmit').prop('disabled', true).text('Saving...');
                 $.ajax({
-                        url: @json(route('super.tagihans.store')),
+                        url: @json(route('super.payments.store')),
                         method: 'POST',
                         data: fd,
                         processData: false,
@@ -238,5 +353,80 @@
             });
 
         })(jQuery);
+
+
+
+
+
+
+        $(document).on('change', '#checkAll', function() {
+            $('.row-check').prop('checked', this.checked);
+        });
+
+
+
+
+        $('#btnPaySelected').on('click', function() {
+            let ids = [];
+            let total = 0;
+            let pelanggan = null;
+
+            $('#payTagihanContainer').html('');
+
+            $('.row-check:checked').each(function() {
+                ids.push($(this).val());
+                total += parseFloat($(this).data('amount'));
+                pelanggan = $(this).data('pelanggan'); // wajib ada
+            });
+
+            if (ids.length === 0) {
+                toastErr('Pilih minimal 1 tagihan');
+                return;
+            }
+
+            ids.forEach(id => {
+                $('#payTagihanContainer').append(
+                    `<input type="hidden" name="tagihan_ids[]" value="${id}">`
+                );
+            });
+
+            $('#pay_pelanggan').val(pelanggan);
+            $('#totalAmount').text(total.toLocaleString('id-ID'));
+
+            new bootstrap.Modal('#payMultiModal').show();
+        });
+
+
+
+
+
+        $.ajaxSetup({
+            headers: {
+                'X-CSRF-TOKEN': document
+                    .querySelector('meta[name="csrf-token"]')
+                    .getAttribute('content')
+            }
+        });
+
+
+
+
+        $('#payMultiForm').on('submit', function(e) {
+            e.preventDefault();
+
+            $.ajax({
+                    url: "{{ route('super.payments.bulk') }}",
+                    method: "POST",
+                    data: $(this).serialize(),
+                })
+                .done(res => {
+                    toastOk(res.message);
+                    $('#payMultiModal').modal('hide');
+                    $('#unpaid-table').DataTable().ajax.reload(null, false);
+                })
+                .fail(xhr => {
+                    toastErr(xhr.responseJSON?.message || 'Gagal bayar');
+                });
+        });
     </script>
 @endpush

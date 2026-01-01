@@ -126,6 +126,10 @@ Route::middleware(['auth'])
         Route::middleware('permission:payments.view')->get('payments/find', [PaymentController::class, 'find'])->name('payments.find');
 
 
+
+        Route::middleware('permission:payments.view')->post('payments/bulk', [PaymentController::class, 'payMultiple'])->name('payments.bulk');
+
+
         Route::get('/monitoring', \App\Http\Controllers\Super\MonitoringPageController::class)
             ->name('monitoring.index');
 
