@@ -34,7 +34,7 @@
                                 <tr>
                                     <th>ID Pelanggan</th>
                                     <th>Nama</th>
-                                    <th>No HP</th>
+                                    <th>Alamat</th>
                                     <th>Email</th>
                                     <th>Paket</th>
                                     <th>Server</th>
@@ -243,8 +243,8 @@
                         name: 'pelanggans.nama'
                     },
                     {
-                        data: 'no_hp',
-                        name: 'pelanggans.no_hp'
+                        data: 'alamat',
+                        name: 'pelanggans.alamat'
                     },
                     {
                         data: 'email',
