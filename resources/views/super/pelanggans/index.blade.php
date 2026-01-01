@@ -229,7 +229,7 @@
                 $(DT_SEL).DataTable().ajax.reload(null, false);
             }
 
-            // DataTable
+            // DataTablee
             $(DT_SEL).DataTable({
                 processing: true,
                 serverSide: true,

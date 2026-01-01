@@ -20,7 +20,7 @@ class PelangganTableQuery
                 'pelanggans.id',
                 'pelanggans.id_pelanggan',
                 'pelanggans.nama',
-                'pelanggans.alamat', // ✅ INI
+                'pelanggans.alamat',
                 'pelanggans.no_hp',
                 'pelanggans.email',
                 'pelanggans.id_paket',
