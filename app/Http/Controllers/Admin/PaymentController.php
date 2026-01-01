@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Yajra\DataTables\Facades\DataTables;
 use App\Exports\PaymentsExport;
 use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\Response;
+
 
 class PaymentController extends Controller
 {
@@ -168,5 +170,37 @@ class PaymentController extends Controller
         return response()->json([
             'html' => view('super.payments.partials._cards', compact('items'))->render()
         ]);
+    }
+
+
+    /**
+     * 🔥 MULTIPLE PAYMENT
+     * Checklist → Bayar Bersamaan
+     */
+    public function payMultiple(Request $request, PaymentService $svc)
+    {
+        $data = $request->validate([
+            'tagihan_ids'   => 'required|array|min:1',
+            'tagihan_ids.*' => 'exists:tagihans,id',
+            'method'        => 'required|in:cash,transfer,qris',
+            'paid_at'       => 'nullable|date',
+            'note'          => 'nullable|string',
+        ]);
+
+        try {
+            $payment = $svc->payMultiple($data);
+
+            return response()->json([
+                'message' => 'Pembayaran kolektif berhasil',
+                'data' => [
+                    'payment_id' => $payment->id,
+                    'total'      => $payment->amount,
+                ]
+            ], Response::HTTP_CREATED);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage()
+            ], 422);
+        }
     }
 }
