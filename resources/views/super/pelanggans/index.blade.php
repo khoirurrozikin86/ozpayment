@@ -35,7 +35,7 @@
                                     <th>ID Pelanggan</th>
                                     <th>Nama</th>
                                     <th>Alamat</th>
-                                    <th>Email</th>
+                                    <th>remark</th>
                                     <th>Paket</th>
                                     <th>Server</th>
                                     <th>Updated</th>
@@ -247,8 +247,8 @@
                         name: 'pelanggans.alamat'
                     },
                     {
-                        data: 'email',
-                        name: 'pelanggans.email'
+                        data: 'remark1',
+                        name: 'pelanggans.remark1'
                     },
                     {
                         data: 'paket_nama',
